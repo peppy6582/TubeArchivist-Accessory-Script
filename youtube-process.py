@@ -5,6 +5,7 @@ import re
 import json
 import requests
 from pathlib import Path
+import apprise  # Apprise library for notifications
 
 
 def load_config(config_file):
@@ -28,9 +29,8 @@ VIDEO_DIRECTORY = CONFIG["VIDEO_DIRECTORY"]
 CHANNELS_DIRECTORY = CONFIG["CHANNELS_DIRECTORY"]
 PROCESSED_FILES_TRACKER = CONFIG["PROCESSED_FILES_TRACKER"]
 YOUTUBE_API_KEY = CONFIG["YOUTUBE_API_KEY"]
-PUSHOVER_USER_KEY = CONFIG.get("PUSHOVER_USER_KEY")  # Use .get() to avoid KeyError
-PUSHOVER_API_TOKEN = CONFIG.get("PUSHOVER_API_TOKEN")  # Use .get() to avoid KeyError
-CHANNELS_DVR_API_REFRESH_URL = CONFIG.get("CHANNELS_DVR_API_REFRESH_URL")  # Use .get() to avoid KeyError
+APPRISE_URL = CONFIG.get("APPRISE_URL")  # Apprise URL for notifications
+CHANNELS_DVR_API_REFRESH_URL = CONFIG.get("CHANNELS_DVR_API_REFRESH_URL")  # Optional
 VIDEO_EXTENSIONS = (".mp4", ".mkv", ".webm", ".avi", ".mov")
 
 
@@ -104,11 +104,14 @@ def move_file(file_path, uploader):
     return new_path
 
 
-def send_pushover_notification(processed_channels):
-    """Send a Pushover notification with the processed titles."""
-    if not PUSHOVER_USER_KEY or not PUSHOVER_API_TOKEN:
-        log("Pushover notification skipped: Missing Pushover configuration.")
+def send_notification(processed_channels):
+    """Send a notification using Apprise with the processed titles."""
+    if not APPRISE_URL:
+        log("Notification skipped: Missing APPRISE_URL in config.")
         return
+
+    apprise_client = apprise.Apprise()
+    apprise_client.add(APPRISE_URL)
 
     # Build the summary message
     message_lines = []
@@ -121,20 +124,17 @@ def send_pushover_notification(processed_channels):
         total_videos += len(videos)
 
     message_lines.append(f"Total videos processed: {total_videos}")
-    message = "\n".join(message_lines)[:1024]  # Limit to 1024 characters for Pushover
+    message = "\n".join(message_lines)
 
     # Send the notification
-    payload = {
-        "token": PUSHOVER_API_TOKEN,
-        "user": PUSHOVER_USER_KEY,
-        "message": message,
-    }
     try:
-        response = requests.post("https://api.pushover.net/1/messages.json", data=payload)
-        response.raise_for_status()
-        log("Pushover notification sent.")
-    except requests.RequestException as e:
-        log(f"Failed to send Pushover notification: {e}")
+        apprise_client.notify(
+            title="YouTube Video Processing Completed",
+            body=message,
+        )
+        log("Notification sent via Apprise.")
+    except Exception as e:
+        log(f"Failed to send notification: {e}")
 
 
 def refresh_channels_dvr():
@@ -193,8 +193,8 @@ def process_videos():
                     processed_channels[uploader] = []
                 processed_channels[uploader].append(title)
 
-    # Send Pushover notification with detailed channel info
-    send_pushover_notification(processed_channels)
+    # Send notification with detailed channel info
+    send_notification(processed_channels)
 
     # Trigger Channels DVR metadata refresh
     refresh_channels_dvr()
