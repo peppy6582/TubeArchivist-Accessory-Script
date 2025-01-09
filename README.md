@@ -45,8 +45,8 @@ pip install -r requirements.txt
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/YouTube-Processor.git
-   cd YouTube-Processor
+   git clone https://github.com/peppy6582/TubeArchivist-Accessory-Script.git
+   cd TubeArchivist-Accessory-Script
    ```
 
 2. Make the script executable:
