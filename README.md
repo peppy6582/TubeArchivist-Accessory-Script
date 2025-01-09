@@ -15,7 +15,7 @@ This script works alongside **TubeArchivist**, providing enhanced file organizat
 ## Features
 
 - **Metadata Retrieval**: Fetches YouTube video metadata (title, description, uploader, upload date) for each processed video.
-- **Generate `.nfo` Files**: Creates `.nfo` files with the metadata for use in **Channels DVR** or other media library systems[Jellyfin/EMBY/KODI].
+- **Generate `.nfo` Files**: Creates `.nfo` files with the metadata for use in **Channels DVR** or other media library systems.
 - **File Renaming**: Renames video files and associated `.nfo` files to match the video's title.
 - **Directory Organization**: Moves processed files into directories named after their uploaders.
 - **Optional Pushover Notifications**: Sends a detailed summary of processed videos grouped by channel.
@@ -45,8 +45,8 @@ pip install -r requirements.txt
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/peppy6582/TubeArchivist-Accessory-Script.git
-   cd TubeArchivist-Accessory-Script
+   git clone https://github.com/yourusername/YouTube-Processor.git
+   cd YouTube-Processor
    ```
 
 2. Make the script executable:
@@ -61,13 +61,13 @@ pip install -r requirements.txt
 
 4. Configure the script by creating a `config.txt` file:
    ```txt
-   VIDEO_DIRECTORY=/TubeArchivist/YouTube/
-   CHANNELS_DIRECTORY=/TubeArchivist/YouTube Channels/
+   VIDEO_DIRECTORY=/mnt/Jellyfin/TubeArchivist/YouTube/
+   CHANNELS_DIRECTORY=/mnt/Jellyfin/TubeArchivist/YouTube Channels/
    PROCESSED_FILES_TRACKER=processed_files.txt
    YOUTUBE_API_KEY=your-youtube-api-key
    PUSHOVER_USER_KEY=your-pushover-user-key
    PUSHOVER_API_TOKEN=your-pushover-api-token
-   CHANNELS_DVR_API_REFRESH_URL=http://[YOUR CHANNELS DVR IP HERE]/dvr/scanner/scan
+   CHANNELS_DVR_API_REFRESH_URL=http://192.168.1.4:8089/dvr/scanner/scan
    ```
 
    - **Required**:
@@ -92,7 +92,7 @@ cd /path/to/YouTube-Processor
 ### Scheduled Execution
 To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your crontab:
 ```bash
-0 8,20 * * * cd /TubeArchivist/YouTube && ./youtube-process.py >> /TubeArchivist/YouTube/youtube-process.log 2>&1
+0 8,20 * * * cd /mnt/Jellyfin/TubeArchivist/YouTube && ./youtube-process.py >> /mnt/Jellyfin/TubeArchivist/YouTube/youtube-process.log 2>&1
 ```
 
 ---
@@ -151,7 +151,7 @@ Total videos processed: 5
 ### Debugging
 Check the log file for errors:
 ```bash
-cat /TubeArchivist/YouTube/youtube-process.log
+cat /mnt/Jellyfin/TubeArchivist/YouTube/youtube-process.log
 ```
 
 ---
@@ -187,4 +187,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - [YouTube Data API](https://developers.google.com/youtube/v3)
 - [Pushover](https://pushover.net/)
 - [Channels DVR](https://getchannels.com/dvr/)
-
