@@ -3,7 +3,7 @@
 
 A Python script designed to enhance your **TubeArchivist** setup by:
 - Fetching video metadata from YouTube via the YouTube Data API.
-- Generating `.nfo` files for future integration with **Channels DVR** or other media systems.
+- Generating `.nfo` files for future integration with **Channels DVR** or other media systems [Should already work with Jellyfin|Emby|KODI].
 - Renaming video files and `.nfo` files based on their titles.
 - Organizing video files into directories based on their uploaders.
 - Sending notifications using **Apprise** with support for multiple services.
