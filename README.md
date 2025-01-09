@@ -6,7 +6,8 @@ A Python script designed to enhance your **TubeArchivist** setup by:
 - Generating `.nfo` files for future integration with **Channels DVR** or other media systems.
 - Renaming video files and `.nfo` files based on their titles.
 - Organizing video files into directories based on their uploaders.
-- Sending optional Pushover notifications summarizing the processed videos.
+- Sending notifications using **Apprise** with support for multiple services.
+- Optionally triggering a Channels DVR metadata refresh after processing.
 
 This script works alongside **TubeArchivist**, providing enhanced file organization and compatibility for additional media workflows.
 
@@ -18,7 +19,7 @@ This script works alongside **TubeArchivist**, providing enhanced file organizat
 - **Generate `.nfo` Files**: Creates `.nfo` files with the metadata for use in **Channels DVR** or other media library systems.
 - **File Renaming**: Renames video files and associated `.nfo` files to match the video's title.
 - **Directory Organization**: Moves processed files into directories named after their uploaders.
-- **Optional Pushover Notifications**: Sends a detailed summary of processed videos grouped by channel.
+- **Notifications with Apprise**: Sends detailed summaries of processed videos through services like Pushover, Discord, Slack, etc.
 - **Channels DVR Metadata Refresh**: Optionally triggers a Channels DVR library refresh after processing.
 
 ---
@@ -35,9 +36,9 @@ Install required libraries with:
 pip install -r requirements.txt
 ```
 
-### API Keys
+### APIs and Keys
 - A valid YouTube Data API key.
-- Pushover credentials (optional) for notifications.
+- Apprise-compatible notification service URLs (optional).
 
 ---
 
@@ -45,8 +46,8 @@ pip install -r requirements.txt
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/YouTube-Processor.git
-   cd YouTube-Processor
+   git clone https://github.com/peppy6582/TubeArchivist-Accessory-Script.git
+   cd TubeArchivist-Accessory-Script
    ```
 
 2. Make the script executable:
@@ -61,13 +62,12 @@ pip install -r requirements.txt
 
 4. Configure the script by creating a `config.txt` file:
    ```txt
-   VIDEO_DIRECTORY=/mnt/Jellyfin/TubeArchivist/YouTube/
-   CHANNELS_DIRECTORY=/mnt/Jellyfin/TubeArchivist/YouTube Channels/
+   VIDEO_DIRECTORY=/path/to/TubeArchivist/YouTube/
+   CHANNELS_DIRECTORY=/path/to/TubeArchivist/YouTube Channels/
    PROCESSED_FILES_TRACKER=processed_files.txt
    YOUTUBE_API_KEY=your-youtube-api-key
-   PUSHOVER_USER_KEY=your-pushover-user-key
-   PUSHOVER_API_TOKEN=your-pushover-api-token
-   CHANNELS_DVR_API_REFRESH_URL=http://192.168.1.4:8089/dvr/scanner/scan
+   APPRISE_URL=pover://your_user_key@your_api_token
+   CHANNELS_DVR_API_REFRESH_URL=http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan
    ```
 
    - **Required**:
@@ -75,8 +75,45 @@ pip install -r requirements.txt
      - `CHANNELS_DIRECTORY`: Directory to organize videos by uploader.
      - `YOUTUBE_API_KEY`: YouTube Data API key.
    - **Optional**:
-     - `PUSHOVER_USER_KEY` and `PUSHOVER_API_TOKEN`: Required for Pushover notifications.
+     - `APPRISE_URL`: URL for sending notifications via Apprise-supported services.
      - `CHANNELS_DVR_API_REFRESH_URL`: URL for Channels DVR metadata refresh.
+
+---
+
+## Apprise Notifications
+
+The script supports **Apprise** for notifications. Apprise allows you to send notifications to various services like Pushover, Discord, Slack, Email, and more.
+
+### Example `APPRISE_URL` Values
+Here are some examples of how to configure the `APPRISE_URL` in your `config.txt` file:
+
+1. **Pushover**:
+   ```txt
+   APPRISE_URL=pover://your_user_key@your_api_token
+   ```
+
+2. **Discord**:
+   ```txt
+   APPRISE_URL=discord://webhook_id/webhook_token
+   ```
+
+3. **Slack**:
+   ```txt
+   APPRISE_URL=slack://workspace_token@channel_id
+   ```
+
+4. **Email (SMTP)**:
+   ```txt
+   APPRISE_URL=mailto://username:password@mailserver.example.com:587/?to=recipient@example.com
+   ```
+
+### Test Notifications
+You can test your notification setup using the Apprise CLI:
+```bash
+apprise -vv -t "Test Notification" -b "This is a test message" "pover://your_user_key@your_api_token"
+```
+
+Replace the URL with the `APPRISE_URL` from your `config.txt`.
 
 ---
 
@@ -85,14 +122,14 @@ pip install -r requirements.txt
 ### Manual Execution
 Run the script manually:
 ```bash
-cd /path/to/YouTube-Processor
+cd /path/to/TubeArchivist-Accessory-Script
 ./youtube-process.py
 ```
 
 ### Scheduled Execution
 To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your crontab:
 ```bash
-0 8,20 * * * cd /mnt/Jellyfin/TubeArchivist/YouTube && ./youtube-process.py >> /mnt/Jellyfin/TubeArchivist/YouTube/youtube-process.log 2>&1
+0 8,20 * * * cd /path/to/TubeArchivist/YouTube && ./youtube-process.py >> /path/to/TubeArchivist/YouTube/youtube-process.log 2>&1
 ```
 
 ---
@@ -116,28 +153,8 @@ To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your cr
    - Generates `.nfo` files for future use in Channels DVR or other systems.
    - Renames files to match video titles.
    - Organizes files by uploader in the `CHANNELS_DIRECTORY`.
-3. (Optional) Sends a Pushover notification summarizing the processed videos.
+3. Sends a notification summarizing the processed videos using Apprise.
 4. (Optional) Triggers a Channels DVR library refresh.
-
----
-
-## Pushover Notifications
-
-### How it Works:
-- **Enabled**: Notifications are sent if `PUSHOVER_USER_KEY` and `PUSHOVER_API_TOKEN` are present in the `config.txt`.
-- **Disabled**: If these values are missing, the notification section is skipped.
-
-### Example Notification
-```
-Channel A: 3 videos
-  - Video Title 1
-  - Video Title 2
-  - Video Title 3
-Channel B: 2 videos
-  - Video Title 4
-  - Video Title 5
-Total videos processed: 5
-```
 
 ---
 
@@ -145,13 +162,13 @@ Total videos processed: 5
 
 ### Common Issues
 - **Missing API Key**: Ensure `YOUTUBE_API_KEY` is correctly set in `config.txt`.
+- **Invalid Notification URL**: Verify your `APPRISE_URL` with the Apprise CLI to ensure it is correct.
 - **File Permissions**: Check read/write permissions for the specified directories.
-- **TubeArchivist Configuration**: Ensure TubeArchivist is configured to download videos to the specified `VIDEO_DIRECTORY`.
 
 ### Debugging
 Check the log file for errors:
 ```bash
-cat /mnt/Jellyfin/TubeArchivist/YouTube/youtube-process.log
+cat /path/to/TubeArchivist/YouTube/youtube-process.log
 ```
 
 ---
@@ -177,7 +194,7 @@ cat /mnt/Jellyfin/TubeArchivist/YouTube/youtube-process.log
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/peppy6582/TubeArchivist-Accessory-Script/blob/main/LICENSE) file for details.
 
 ---
 
@@ -185,5 +202,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - [TubeArchivist](https://www.tubearchivist.com/)
 - [YouTube Data API](https://developers.google.com/youtube/v3)
-- [Pushover](https://pushover.net/)
+- [Apprise](https://github.com/caronc/apprise)
 - [Channels DVR](https://getchannels.com/dvr/)
+
+---
