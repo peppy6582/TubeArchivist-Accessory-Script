@@ -1,1 +1,7 @@
-
+VIDEO_DIRECTORY=/TubeArchivist/YouTube/
+CHANNELS_DIRECTORY=/TubeArchivist/YouTube Channels/
+PROCESSED_FILES_TRACKER=processed_files.txt
+YOUTUBE_API_KEY=your-youtube-api-key
+PUSHOVER_USER_KEY=your-pushover-user-key
+PUSHOVER_API_TOKEN=your-pushover-api-token
+CHANNELS_DVR_API_REFRESH_URL=http://[YOUR CHANNELS DVR IP HERE]/dvr/scanner/scan
