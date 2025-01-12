@@ -111,7 +111,7 @@ class VideoProcessor:
 
     @staticmethod
     def _format_channel_name(name: str) -> str:
-        """Preserve formatting for channel names"""
+        """Preserve formatting for channel names."""
         allowed_chars = ".-_', ()[]"
         return "".join(c if c.isalnum() or c in allowed_chars else "_" for c in name)
 
@@ -122,21 +122,32 @@ class VideoProcessor:
         - Preserves spaces around hyphens
         - Preserves parentheses formatting
         - Preserves apostrophes
+        - Allows hyphens in the title structure
         Example: "Title - Channel Name (Season 1)" structure
         """
-        parts = name.split('_')
-        
-        if len(parts) >= 3:
-            title = parts[0]
-            channel = parts[1].replace('*', "'")
-            episode = parts[2].replace('*', '')
-            
-            if episode.startswith('S'):
-                episode = f"({episode})"
-                
-            name = f"{title} - {channel} {episode}"
-        
+        # Split the name into parts using hyphen (`-`) as a separator
+        parts = name.split('-')
+
+        # Ensure at least a title and a channel part are present
+        if len(parts) >= 2:
+            title = parts[0].strip()
+            channel = parts[1].strip()
+
+            # Check if there's a third part (like an episode or season)
+            if len(parts) >= 3:
+                episode = parts[2].strip()
+
+                # Format episode if it starts with 'S' (e.g., S1, S2)
+                if episode.startswith('S'):
+                    episode = f"({episode})"
+                name = f"{title} - {channel} {episode}"
+            else:
+                name = f"{title} - {channel}"
+
+        # Define allowed characters for the title
         allowed_chars = ".-_', ()[]"
+
+        # Filter out unwanted characters and limit length to 255 characters
         return "".join(c if c.isalnum() or c in allowed_chars else "_" for c in name)[:255]
 
     def _process_file(self, file_path: Path) -> bool:
@@ -173,10 +184,11 @@ class VideoProcessor:
         path.write_text(content, encoding="utf-8")
 
     def cleanup_old_files(self) -> None:
-        """Delete files older than DELETE_AFTER days if configured"""
+        """Delete files older than DELETE_AFTER days if configured."""
         delete_after = self.config.get("DELETE_AFTER")
-        if delete_after is None:
-            logger.debug("DELETE_AFTER not configured, skipping cleanup")
+
+        if not delete_after:  # Check if DELETE_AFTER is None or an empty string
+            logger.info("No DELETE_AFTER set, not deleting files.")
             return
 
         try:
@@ -192,9 +204,9 @@ class VideoProcessor:
         cutoff_time = time.time() - (days * 86400)
         deleted_count = 0
         deleted_size = 0
-        
+
         logger.info(f"Starting cleanup of files older than {days} days")
-        
+
         # Clear previous deletion records
         self.deleted_files.clear()
 
@@ -208,7 +220,7 @@ class VideoProcessor:
                     channel_name = file_path.parent.name
                     base_name = file_path.stem
                     self.deleted_files[channel_name].append(base_name)
-                    
+
                     file_path.unlink()
                     deleted_count += 1
                     deleted_size += size
