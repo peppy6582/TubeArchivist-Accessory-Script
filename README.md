@@ -21,7 +21,7 @@ This script works alongside **TubeArchivist**, providing enhanced file organizat
 - **Directory Organization**: Moves processed files into directories named after their uploaders.
 - **Notifications with Apprise**: Sends detailed summaries of processed videos through services like Pushover, Discord, Slack, etc.
 - **Channels DVR Metadata Refresh**: Optionally triggers a Channels DVR library refresh after processing.
-
+- **DELETE_AFTER**: Optionally removes video files older than x days
 ---
 
 ## Requirements
@@ -68,6 +68,7 @@ pip install -r requirements.txt
    YOUTUBE_API_KEY=your-youtube-api-key
    APPRISE_URL=pover://your_user_key@your_api_token
    CHANNELS_DVR_API_REFRESH_URL=http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan
+   DELETE_AFTER=30 (Remove files older than x days)
    ```
 
    - **Required**:
@@ -77,6 +78,7 @@ pip install -r requirements.txt
    - **Optional**:
      - `APPRISE_URL`: URL for sending notifications via Apprise-supported services.
      - `CHANNELS_DVR_API_REFRESH_URL`: URL for Channels DVR metadata refresh.
+     - `DELETE_AFTER`: Remove files older than x days
 
 ---
 
@@ -153,8 +155,9 @@ To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your cr
    - Generates `.nfo` files for future use in Channels DVR or other systems.
    - Renames files to match video titles.
    - Organizes files by uploader in the `CHANNELS_DIRECTORY`.
-3. Sends a notification summarizing the processed videos using Apprise.
-4. (Optional) Triggers a Channels DVR library refresh.
+3. (Optional) Deletes files older than x days.
+4. (Optional) Sends a notification summarizing the processed videos using Apprise.
+5. (Optional) Triggers a Channels DVR library refresh.
 
 ---
 
@@ -166,7 +169,7 @@ To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your cr
 - **File Permissions**: Check read/write permissions for the specified directories.
 
 ### Debugging
-Check the log file for errors:
+Check the log file for errors (only works if you set your cron job to output to this file as above):
 ```bash
 cat /path/to/TubeArchivist/YouTube/youtube-process.log
 ```
