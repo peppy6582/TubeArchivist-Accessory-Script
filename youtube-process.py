@@ -1,204 +1,303 @@
 #!/usr/bin/env python3
 
-import os
-import re
-import json
-import requests
+import logging
 from pathlib import Path
-import apprise  # Apprise library for notifications
+from typing import Dict, Set, Optional, Tuple, List
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+import requests
+import apprise
+from time import sleep
+from collections import defaultdict
+import time
+from datetime import datetime, timedelta
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-def load_config(config_file):
-    """Load configuration variables from a text file."""
-    config = {}
-    with open(config_file, "r") as file:
-        for line in file:
-            line = line.strip()
-            if line and not line.startswith("#"):  # Ignore empty lines and comments
-                key, value = line.split("=", 1)
-                config[key.strip()] = value.strip()
-    return config
+@dataclass
+class VideoMetadata:
+    title: str
+    description: str
+    uploader: str
+    upload_date: str
 
+class VideoProcessor:
+    FILE_TYPES = {
+        'video': {'.mp4', '.mkv', '.webm', '.avi', '.mov'},
+        'auxiliary': {'.json', '.vtt'}
+    }
 
-# Load configuration
-CONFIG_FILE = "config.txt"  # Path to the configuration file
-CONFIG = load_config(CONFIG_FILE)
+    def __init__(self, config_path: str):
+        self.config = self._load_config(config_path)
+        self.processed_files = self._load_processed_files()
+        self.apprise_client = self._setup_apprise()
+        self.api_quota_remaining = 1000
+        self.processed_channels = defaultdict(list)
+        self.deleted_files = defaultdict(list)
+        self.video_id_map = {}
 
-# Configuration variables
-VIDEO_DIRECTORY = CONFIG["VIDEO_DIRECTORY"]
-CHANNELS_DIRECTORY = CONFIG["CHANNELS_DIRECTORY"]
-PROCESSED_FILES_TRACKER = CONFIG["PROCESSED_FILES_TRACKER"]
-YOUTUBE_API_KEY = CONFIG["YOUTUBE_API_KEY"]
-APPRISE_URL = CONFIG.get("APPRISE_URL")  # Apprise URL for notifications
-CHANNELS_DVR_API_REFRESH_URL = CONFIG.get("CHANNELS_DVR_API_REFRESH_URL")  # Optional
-VIDEO_EXTENSIONS = (".mp4", ".mkv", ".webm", ".avi", ".mov")
+    def _load_config(self, path: str) -> Dict[str, str]:
+        with open(path, "r") as f:
+            return dict(line.strip().split("=", 1) for line in f 
+                       if line.strip() and not line.startswith("#"))
 
+    def _load_processed_files(self) -> Set[str]:
+        tracker_path = Path(self.config["PROCESSED_FILES_TRACKER"])
+        return set(tracker_path.read_text().splitlines()) if tracker_path.exists() else set()
 
-def log(message):
-    print(message)
+    def _setup_apprise(self) -> Optional[apprise.Apprise]:
+        if url := self.config.get("APPRISE_URL"):
+            client = apprise.Apprise()
+            client.add(url)
+            return client
+        return None
 
+    @lru_cache(maxsize=1000)
+    def get_video_metadata(self, video_id: str) -> Optional[VideoMetadata]:
+        if self.api_quota_remaining <= 0:
+            logger.warning("API quota exceeded")
+            return None
 
-def load_processed_files():
-    return set(open(PROCESSED_FILES_TRACKER).read().splitlines()) if os.path.exists(PROCESSED_FILES_TRACKER) else set()
+        for attempt in range(3):
+            try:
+                response = requests.get(
+                    "https://www.googleapis.com/youtube/v3/videos",
+                    params={
+                        "part": "snippet",
+                        "id": video_id,
+                        "key": self.config["YOUTUBE_API_KEY"]
+                    },
+                    timeout=10
+                ).json()
 
+                self.api_quota_remaining -= 1
 
-def save_processed_file(file_name):
-    with open(PROCESSED_FILES_TRACKER, "a") as file:
-        file.write(f"{file_name}\n")
+                if items := response.get("items"):
+                    snippet = items[0]["snippet"]
+                    return VideoMetadata(
+                        title=snippet.get("title", "Unknown Title"),
+                        description=snippet.get("description", "No Description"),
+                        uploader=snippet.get("channelTitle", "Unknown Uploader"),
+                        upload_date=snippet.get("publishedAt", "Unknown Date")
+                    )
+                return None
 
+            except Exception as e:
+                logger.error(f"Metadata fetch attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    sleep(2 ** attempt)
 
-def get_video_metadata(video_id):
-    try:
-        params = {"part": "snippet", "id": video_id, "key": YOUTUBE_API_KEY}
-        response = requests.get("https://www.googleapis.com/youtube/v3/videos", params=params)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("items"):
-            snippet = data["items"][0]["snippet"]
-            return {
-                "title": snippet.get("title", "Unknown Title"),
-                "description": snippet.get("description", "No Description"),
-                "uploader": snippet.get("channelTitle", "Unknown Uploader"),
-                "upload_date": snippet.get("publishedAt", "Unknown Date"),
-            }
-    except Exception as e:
-        log(f"Failed to fetch metadata for video ID {video_id}: {e}")
-    return None
+        return None
 
+    def _get_destination_info(self, video_id: str) -> Optional[Dict]:
+        if video_id not in self.video_id_map:
+            if metadata := self.get_video_metadata(video_id):
+                channel_dir = Path(self.config["CHANNELS_DIRECTORY"]) / self._format_channel_name(metadata.uploader)
+                channel_dir.mkdir(parents=True, exist_ok=True)
+                
+                self.video_id_map[video_id] = {
+                    'metadata': metadata,
+                    'channel_dir': channel_dir,
+                    'base_filename': self._format_title(metadata.title)
+                }
+                
+                self.processed_channels[metadata.uploader].append(metadata.title)
+            else:
+                return None
+                
+        return self.video_id_map[video_id]
 
-def generate_nfo(metadata, nfo_path):
-    """Generate the NFO content and save it to a file."""
-    content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+    @staticmethod
+    def _format_channel_name(name: str) -> str:
+        """Preserve formatting for channel names"""
+        allowed_chars = ".-_', ()[]"
+        return "".join(c if c.isalnum() or c in allowed_chars else "_" for c in name)
+
+    @staticmethod
+    def _format_title(name: str) -> str:
+        """
+        Format title with proper patterns:
+        - Preserves spaces around hyphens
+        - Preserves parentheses formatting
+        - Preserves apostrophes
+        Example: "Title - Channel Name (Season 1)" structure
+        """
+        parts = name.split('_')
+        
+        if len(parts) >= 3:
+            title = parts[0]
+            channel = parts[1].replace('*', "'")
+            episode = parts[2].replace('*', '')
+            
+            if episode.startswith('S'):
+                episode = f"({episode})"
+                
+            name = f"{title} - {channel} {episode}"
+        
+        allowed_chars = ".-_', ()[]"
+        return "".join(c if c.isalnum() or c in allowed_chars else "_" for c in name)[:255]
+
+    def _process_file(self, file_path: Path) -> bool:
+        try:
+            video_id = file_path.stem.split('.')[0]
+            
+            if not (dest_info := self._get_destination_info(video_id)):
+                return False
+
+            new_filename = dest_info['base_filename']
+            if '.lang.' in file_path.name:
+                new_filename = f"{new_filename}.{file_path.stem.split('.')[-1]}"
+            new_filename = f"{new_filename}{file_path.suffix}"
+            
+            if file_path.suffix in self.FILE_TYPES['video']:
+                nfo_path = dest_info['channel_dir'] / f"{new_filename}.nfo"
+                self._generate_nfo(dest_info['metadata'], nfo_path)
+
+            file_path.rename(dest_info['channel_dir'] / new_filename)
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to process {file_path}: {e}")
+            return False
+
+    def _generate_nfo(self, metadata: VideoMetadata, path: Path) -> None:
+        content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <movie>
-  <title>{metadata.get('title', 'Unknown Title')}</title>
-  <plot>{metadata.get('description', 'No description available')}</plot>
-  <studio>{metadata.get('uploader', 'Unknown uploader')}</studio>
-  <premiered>{metadata.get('upload_date', 'Unknown date')}</premiered>
-</movie>
-"""
-    with open(nfo_path, "w", encoding="utf-8") as file:
-        file.write(content)
-    log(f"Generated NFO: {nfo_path}")
+    <title>{metadata.title}</title>
+    <plot>{metadata.description}</plot>
+    <studio>{metadata.uploader}</studio>
+    <premiered>{metadata.upload_date}</premiered>
+</movie>"""
+        path.write_text(content, encoding="utf-8")
 
+    def cleanup_old_files(self) -> None:
+        """Delete files older than DELETE_AFTER days if configured"""
+        delete_after = self.config.get("DELETE_AFTER")
+        if delete_after is None:
+            logger.debug("DELETE_AFTER not configured, skipping cleanup")
+            return
 
-def sanitize_title(title):
-    """Sanitize the title for valid filenames."""
-    return re.sub(r'[<>:"/\\|?*]', "_", title)[:255]
+        try:
+            days = int(delete_after)
+        except ValueError:
+            logger.error(f"Invalid DELETE_AFTER value: {delete_after}")
+            return
 
+        channels_dir = Path(self.config["CHANNELS_DIRECTORY"])
+        if not channels_dir.exists():
+            return
 
-def rename_file(file_path, new_title):
-    """Rename the file and return the new path."""
-    new_path = os.path.join(os.path.dirname(file_path), sanitize_title(new_title) + os.path.splitext(file_path)[1])
-    os.rename(file_path, new_path)
-    log(f"Renamed file: {file_path} -> {new_path}")
-    return new_path
+        cutoff_time = time.time() - (days * 86400)
+        deleted_count = 0
+        deleted_size = 0
+        
+        logger.info(f"Starting cleanup of files older than {days} days")
+        
+        # Clear previous deletion records
+        self.deleted_files.clear()
 
-
-def move_file(file_path, uploader):
-    """Move the file to the uploader's directory."""
-    channel_dir = os.path.join(CHANNELS_DIRECTORY, uploader)
-    os.makedirs(channel_dir, exist_ok=True)
-    new_path = os.path.join(channel_dir, os.path.basename(file_path))
-    os.rename(file_path, new_path)
-    log(f"Moved file: {file_path} -> {new_path}")
-    return new_path
-
-
-def send_notification(processed_channels):
-    """Send a notification using Apprise with the processed titles."""
-    if not APPRISE_URL:
-        log("Notification skipped: Missing APPRISE_URL in config.")
-        return
-
-    apprise_client = apprise.Apprise()
-    apprise_client.add(APPRISE_URL)
-
-    # Build the summary message
-    message_lines = []
-    total_videos = 0
-
-    for channel, videos in processed_channels.items():
-        message_lines.append(f"{channel}: {len(videos)} videos")
-        for title in videos:
-            message_lines.append(f"  - {title}")
-        total_videos += len(videos)
-
-    message_lines.append(f"Total videos processed: {total_videos}")
-    message = "\n".join(message_lines)
-
-    # Send the notification
-    try:
-        apprise_client.notify(
-            title="YouTube Video Processing Completed",
-            body=message,
-        )
-        log("Notification sent via Apprise.")
-    except Exception as e:
-        log(f"Failed to send notification: {e}")
-
-
-def refresh_channels_dvr():
-    """Trigger a Channels DVR metadata refresh if the URL is configured."""
-    if not CHANNELS_DVR_API_REFRESH_URL:
-        log("Channels DVR metadata refresh skipped: Missing URL in config.")
-        return
-
-    try:
-        response = requests.put(CHANNELS_DVR_API_REFRESH_URL)
-        response.raise_for_status()
-        log("Channels DVR metadata refresh triggered.")
-    except requests.RequestException as e:
-        log(f"Failed to refresh Channels DVR: {e}")
-
-
-def process_videos():
-    """Process video files: generate NFO, rename files, and move them."""
-    processed_files = load_processed_files()
-    processed_channels = {}  # Dictionary to track processed videos by channel
-
-    for root, _, files in os.walk(VIDEO_DIRECTORY):
-        for file in files:
-            if file in processed_files or not file.endswith(VIDEO_EXTENSIONS):
+        for file_path in channels_dir.rglob("*"):
+            if not file_path.is_file():
                 continue
 
-            file_path = os.path.join(root, file)
-            video_id = os.path.splitext(file)[0]
-            metadata = get_video_metadata(video_id)
+            try:
+                if file_path.stat().st_mtime < cutoff_time:
+                    size = file_path.stat().st_size
+                    channel_name = file_path.parent.name
+                    base_name = file_path.stem
+                    self.deleted_files[channel_name].append(base_name)
+                    
+                    file_path.unlink()
+                    deleted_count += 1
+                    deleted_size += size
+                    logger.debug(f"Deleted: {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete {file_path}: {e}")
 
-            if metadata:
-                uploader = metadata["uploader"]
-                title = metadata["title"]
+        if deleted_size > 1073741824:
+            size_str = f"{deleted_size / 1073741824:.2f} GB"
+        else:
+            size_str = f"{deleted_size / 1048576:.2f} MB"
 
-                # Generate NFO before renaming
-                nfo_path = os.path.join(root, f"{video_id}.nfo")
-                generate_nfo(metadata, nfo_path)
+        logger.info(f"Cleanup completed: Deleted {deleted_count} files ({size_str})")
 
-                # Rename the video file
-                renamed_path = rename_file(file_path, title)
+        for dir_path in sorted(channels_dir.rglob("*"), reverse=True):
+            if dir_path.is_dir():
+                try:
+                    dir_path.rmdir()
+                except OSError:
+                    pass
 
-                # Rename the NFO file to match the renamed video file
-                new_nfo_path = renamed_path.replace(os.path.splitext(renamed_path)[1], ".nfo")
-                os.rename(nfo_path, new_nfo_path)
-                log(f"Renamed NFO file: {nfo_path} -> {new_nfo_path}")
+    def process_videos(self) -> None:
+        try:
+            video_dir = Path(self.config["VIDEO_DIRECTORY"])
+            files = [f for f in video_dir.rglob("*") 
+                    if f.suffix.lower() in (self.FILE_TYPES['video'] | self.FILE_TYPES['auxiliary'])
+                    and f.name not in self.processed_files]
 
-                # Move the video file and its NFO to the uploader's directory
-                move_file(renamed_path, uploader)
-                move_file(new_nfo_path, uploader)
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(self._process_file, files))
 
-                # Mark the video file as processed
-                save_processed_file(file)
+            with open(self.config["PROCESSED_FILES_TRACKER"], "a") as f:
+                f.writelines(f"{file.name}\n" for file, success 
+                           in zip(files, results) if success)
 
-                # Add the video title to the uploader's list in the dictionary
-                if uploader not in processed_channels:
-                    processed_channels[uploader] = []
-                processed_channels[uploader].append(title)
+            # Run cleanup before notification
+            self.cleanup_old_files()
+            
+            # Send notification if there are any processed OR deleted files
+            if self.apprise_client and (self.processed_channels or self.deleted_files):
+                self._send_notification()
 
-    # Send notification with detailed channel info
-    send_notification(processed_channels)
+            self._refresh_channels_dvr()
 
-    # Trigger Channels DVR metadata refresh
-    refresh_channels_dvr()
+        except Exception as e:
+            logger.error(f"Processing failed: {e}")
+            raise
 
+    def _send_notification(self) -> None:
+        if not self.apprise_client:
+            return
+
+        try:
+            message_parts = []
+            
+            # Processed files section
+            if self.processed_channels:
+                message_parts.append("Processed Files:")
+                summary = [f"{channel}: {len(videos)} videos" for channel, videos in self.processed_channels.items()]
+                details = [f"  - {title}" for videos in self.processed_channels.values() for title in videos]
+                message_parts.extend(summary + details)
+                message_parts.append(f"Total videos processed: {sum(len(v) for v in self.processed_channels.values())}")
+            
+            # Deleted files section
+            if self.deleted_files:
+                if message_parts:  # Add blank line if there were processed files
+                    message_parts.append("")
+                message_parts.append("Deleted Files:")
+                del_summary = [f"{channel}: {len(files)} files" for channel, files in self.deleted_files.items()]
+                del_details = [f"  - {title}" for files in self.deleted_files.values() for title in files]
+                message_parts.extend(del_summary + del_details)
+                message_parts.append(f"Total files deleted: {sum(len(v) for v in self.deleted_files.values())}")
+            
+            if message_parts:  # Only send if there's something to report
+                self.apprise_client.notify(
+                    title="YouTube Video Processing Report",
+                    body="\n".join(message_parts)
+                )
+        except Exception as e:
+            logger.error(f"Notification failed: {e}")
+
+    def _refresh_channels_dvr(self) -> None:
+        if url := self.config.get("CHANNELS_DVR_API_REFRESH_URL"):
+            try:
+                requests.put(url, timeout=10).raise_for_status()
+                logger.info("Channels DVR metadata refresh completed")
+            except Exception as e:
+                logger.error(f"Channels DVR refresh failed: {e}")
 
 if __name__ == "__main__":
-    process_videos()
+    processor = VideoProcessor("config.txt")
+    processor.process_videos()
