@@ -75,6 +75,7 @@ pip install -r requirements.txt
      - `VIDEO_DIRECTORY`: Directory where TubeArchivist stores downloaded videos.
      - `CHANNELS_DIRECTORY`: Directory to organize videos by uploader.
      - `YOUTUBE_API_KEY`: YouTube Data API key.
+     - `PROCESSED_FILES_TRACKER`: Keeps a record of processed files so api hits are not duplicated.
    - **Optional**:
      - `APPRISE_URL`: URL for sending notifications via Apprise-supported services.
      - `CHANNELS_DVR_API_REFRESH_URL`: URL for Channels DVR metadata refresh.
