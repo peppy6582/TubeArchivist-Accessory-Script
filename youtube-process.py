@@ -211,19 +211,27 @@ class VideoProcessor:
             
             if not (dest_info := self._get_destination_info(video_id)):
                 return False
-
+    
             new_filename = dest_info['base_filename']
             if '.lang.' in file_path.name:
                 new_filename = f"{new_filename}.{file_path.stem.split('.')[-1]}"
-            new_filename = f"{new_filename}{file_path.suffix}"
-            
-            if file_path.suffix in self.FILE_TYPES['video']:
-                nfo_path = dest_info['channel_dir'] / f"{new_filename}.nfo"
-                self._generate_nfo(dest_info['metadata'], nfo_path)
-
-            file_path.rename(dest_info['channel_dir'] / new_filename)
+    
+            if file_path.suffix == '.json':
+                # Convert JSON files to NFO
+                new_path = dest_info['channel_dir'] / f"{new_filename}.nfo"
+                self._generate_nfo(dest_info['metadata'], new_path)
+            else:
+                # For all other files (video, vtt, etc), keep their extension
+                new_path = dest_info['channel_dir'] / f"{new_filename}{file_path.suffix}"
+                
+                # Generate NFO file alongside video files
+                if file_path.suffix in self.FILE_TYPES['video']:
+                    nfo_path = dest_info['channel_dir'] / f"{new_filename}.nfo"
+                    self._generate_nfo(dest_info['metadata'], nfo_path)
+    
+            file_path.rename(new_path)
             return True
-
+    
         except Exception as e:
             logger.error(f"Failed to process {file_path}: {e}")
             return False
