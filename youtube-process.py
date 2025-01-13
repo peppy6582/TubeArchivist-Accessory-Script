@@ -120,7 +120,7 @@ class VideoProcessor:
     @staticmethod
     def _sanitize_filename(name: str) -> str:
         """Sanitize a filename to allow only safe characters."""
-        allowed_chars = "-_.()[], '"
+        allowed_chars = "-_.()[], '\""
         return "".join(c if c.isalnum() or c in allowed_chars else "_" for c in name)[:255]
 
     def _process_file(self, file_path: Path) -> bool:
