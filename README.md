@@ -70,7 +70,7 @@ pip install -r requirements.txt
    youtube_api_key: "your-youtube-api-key"
    apprise_url: "pover://your_user_key@your_api_token"
    channels_dvr_api_refresh_url: "http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan"
-   delete_after: 30  # Remove files older than 30 days
+   delete_after: 30  # Remove files older than 30 days, remove the number to disable
    ```
 
    - **Required**:
