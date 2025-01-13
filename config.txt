@@ -1,7 +1,0 @@
-VIDEO_DIRECTORY=/TubeArchivist/YouTube/
-CHANNELS_DIRECTORY=/TubeArchivist/YouTube Channels/
-PROCESSED_FILES_TRACKER=processed_files.txt
-YOUTUBE_API_KEY=your-youtube-api-key
-APPRISE_URL=your-apprise-url
-CHANNELS_DVR_API_REFRESH_URL=http://[YOUR CHANNELS DVR IP HERE]/dvr/scanner/scan
-DELETE_AFTER=Delete files older than x days
