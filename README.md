@@ -3,11 +3,12 @@
 
 A Python script designed to enhance your **TubeArchivist** setup by:
 - Fetching video metadata from YouTube via the YouTube Data API.
-- Generating `.nfo` files for future integration with **Channels DVR** or other media systems [Should already work with Jellyfin|Emby|KODI].
+- Generating `.nfo` files for integration with **Channels DVR**, **Jellyfin**, **Emby**, or **Kodi**.
 - Renaming video files and `.nfo` files based on their titles.
 - Organizing video files into directories based on their uploaders.
 - Sending notifications using **Apprise** with support for multiple services.
 - Optionally triggering a Channels DVR metadata refresh after processing.
+- Optionally removing older files with the `delete_after` feature.
 
 This script works alongside **TubeArchivist**, providing enhanced file organization and compatibility for additional media workflows.
 
@@ -21,7 +22,8 @@ This script works alongside **TubeArchivist**, providing enhanced file organizat
 - **Directory Organization**: Moves processed files into directories named after their uploaders.
 - **Notifications with Apprise**: Sends detailed summaries of processed videos through services like Pushover, Discord, Slack, etc.
 - **Channels DVR Metadata Refresh**: Optionally triggers a Channels DVR library refresh after processing.
-- **DELETE_AFTER**: Optionally removes video files older than x days
+- **File Cleanup with `delete_after`**: Automatically removes files older than a specified number of days.
+
 ---
 
 ## Requirements
@@ -60,26 +62,26 @@ pip install -r requirements.txt
    pip install -r requirements.txt
    ```
 
-4. Configure the script by creating a `config.txt` file:
-   ```txt
-   VIDEO_DIRECTORY=/path/to/TubeArchivist/YouTube/
-   CHANNELS_DIRECTORY=/path/to/TubeArchivist/YouTube Channels/
-   PROCESSED_FILES_TRACKER=processed_files.txt
-   YOUTUBE_API_KEY=your-youtube-api-key
-   APPRISE_URL=pover://your_user_key@your_api_token
-   CHANNELS_DVR_API_REFRESH_URL=http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan
-   DELETE_AFTER=30 (Remove files older than x days)
+4. Configure the script by creating a `config.yaml` file:
+   ```yaml
+   video_directory: "/path/to/TubeArchivist/YouTube/"
+   channels_directory: "/path/to/TubeArchivist/YouTube Channels/"
+   processed_files_tracker: "processed_files.txt"
+   youtube_api_key: "your-youtube-api-key"
+   apprise_url: "pover://your_user_key@your_api_token"
+   channels_dvr_api_refresh_url: "http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan"
+   delete_after: 30  # Remove files older than 30 days
    ```
 
    - **Required**:
-     - `VIDEO_DIRECTORY`: Directory where TubeArchivist stores downloaded videos.
-     - `CHANNELS_DIRECTORY`: Directory to organize videos by uploader.
-     - `YOUTUBE_API_KEY`: YouTube Data API key.
-     - `PROCESSED_FILES_TRACKER`: Keeps a record of processed files so api hits are not duplicated.
+     - `video_directory`: Directory where TubeArchivist stores downloaded videos.
+     - `channels_directory`: Directory to organize videos by uploader.
+     - `youtube_api_key`: YouTube Data API key.
+     - `processed_files_tracker`: Keeps a record of processed files so API hits are not duplicated.
    - **Optional**:
-     - `APPRISE_URL`: URL for sending notifications via Apprise-supported services.
-     - `CHANNELS_DVR_API_REFRESH_URL`: URL for Channels DVR metadata refresh.
-     - `DELETE_AFTER`: Remove files older than x days
+     - `apprise_url`: URL for sending notifications via Apprise-supported services.
+     - `channels_dvr_api_refresh_url`: URL for Channels DVR metadata refresh.
+     - `delete_after`: Remove files older than the specified number of days.
 
 ---
 
@@ -87,27 +89,27 @@ pip install -r requirements.txt
 
 The script supports **Apprise** for notifications. Apprise allows you to send notifications to various services like Pushover, Discord, Slack, Email, and more.
 
-### Example `APPRISE_URL` Values
-Here are some examples of how to configure the `APPRISE_URL` in your `config.txt` file:
+### Example `apprise_url` Values
+Here are some examples of how to configure the `apprise_url` in your `config.yaml` file:
 
 1. **Pushover**:
-   ```txt
-   APPRISE_URL=pover://your_user_key@your_api_token
+   ```yaml
+   apprise_url: "pover://your_user_key@your_api_token"
    ```
 
 2. **Discord**:
-   ```txt
-   APPRISE_URL=discord://webhook_id/webhook_token
+   ```yaml
+   apprise_url: "discord://webhook_id/webhook_token"
    ```
 
 3. **Slack**:
-   ```txt
-   APPRISE_URL=slack://workspace_token@channel_id
+   ```yaml
+   apprise_url: "slack://workspace_token@channel_id"
    ```
 
 4. **Email (SMTP)**:
-   ```txt
-   APPRISE_URL=mailto://username:password@mailserver.example.com:587/?to=recipient@example.com
+   ```yaml
+   apprise_url: "mailto://username:password@mailserver.example.com:587/?to=recipient@example.com"
    ```
 
 ### Test Notifications
@@ -115,8 +117,6 @@ You can test your notification setup using the Apprise CLI:
 ```bash
 apprise -vv -t "Test Notification" -b "This is a test message" "pover://your_user_key@your_api_token"
 ```
-
-Replace the URL with the `APPRISE_URL` from your `config.txt`.
 
 ---
 
@@ -143,30 +143,30 @@ To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your cr
    - This script works alongside TubeArchivist to organize downloaded YouTube videos by uploader and enhance metadata compatibility.
 
 2. **Channels DVR**:
-   - Generated `.nfo` files are compatible with future integration into Channels DVR.
-   - After processing, the script can optionally trigger a Channels DVR library refresh using the `CHANNELS_DVR_API_REFRESH_URL`.
+   - Generated `.nfo` files are compatible with Channels DVR.
+   - After processing, the script can optionally trigger a Channels DVR library refresh using the `channels_dvr_api_refresh_url`.
 
 ---
 
-## Example Workflow
+## File Cleanup with `delete_after`
 
-1. TubeArchivist downloads videos into the `VIDEO_DIRECTORY`.
-2. This script processes the videos:
-   - Retrieves metadata from YouTube.
-   - Generates `.nfo` files for future use in Channels DVR or other systems.
-   - Renames files to match video titles.
-   - Organizes files by uploader in the `CHANNELS_DIRECTORY`.
-3. (Optional) Deletes files older than x days.
-4. (Optional) Sends a notification summarizing the processed videos using Apprise.
-5. (Optional) Triggers a Channels DVR library refresh.
+The `delete_after` feature allows you to specify a number of days after which files will be automatically removed. This can help manage disk space and keep your library clean.
+
+- To enable this feature, set `delete_after` in `config.yaml` to the desired number of days.
+- Example:
+  ```yaml
+  delete_after: 30  # Removes files older than 30 days
+  ```
+
+If `delete_after` is not set or is `null`, the script will skip file deletion.
 
 ---
 
 ## Troubleshooting
 
 ### Common Issues
-- **Missing API Key**: Ensure `YOUTUBE_API_KEY` is correctly set in `config.txt`.
-- **Invalid Notification URL**: Verify your `APPRISE_URL` with the Apprise CLI to ensure it is correct.
+- **Missing API Key**: Ensure `youtube_api_key` is correctly set in `config.yaml`.
+- **Invalid Notification URL**: Verify your `apprise_url` with the Apprise CLI to ensure it is correct.
 - **File Permissions**: Check read/write permissions for the specified directories.
 
 ### Debugging
@@ -209,4 +209,3 @@ This project is licensed under the MIT License. See the [LICENSE](https://github
 - [Apprise](https://github.com/caronc/apprise)
 - [Channels DVR](https://getchannels.com/dvr/)
 
----
