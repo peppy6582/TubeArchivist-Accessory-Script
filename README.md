@@ -158,7 +158,7 @@ To process videos twice a day (at 8:00 AM and 8:00 PM), add this line to your cr
 
 ## File Cleanup with `delete_after`
 
-The `delete_after` feature allows you to specify a number of days after which files will be automatically removed. This can help manage disk space and keep your library clean.
+The `delete_after` feature allows you to specify a number of days after which files will be automatically removed. This can help manage disk space and keep your library clean.  It will also auto-populate the channels into your config.yaml so you can add per-channel delete_after:
 
 - **Global `delete_after`:**
   -  Set `delete_after` in `config.yaml` to the desired number of days.
