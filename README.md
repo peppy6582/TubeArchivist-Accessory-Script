@@ -78,19 +78,6 @@ pip install -r requirements.txt
    apprise_url: "pover://your_user_key@your_api_token"
    channels_dvr_api_refresh_url: "http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan"
    delete_after: 30  # Remove files older than 30 days by default, set to null to disable
-   channels:
-    - America's Test Kitchen
-    - SAM THE COOKING GUY
-    - WatchMojo.com
-    - MsMojo:
-      delete_after: 14  # 14 day retention for MsMojo
-    - Nat Geo Animals
-    - How To Drink
-    - Best Ever Food Review Show
-    - Food Wishes
-    - Sous Vide Everything
-    - Sorted Food
-    - Sauce Stache
    ```
 
    - **Required**:
