@@ -1,7 +1,7 @@
 video_directory: "/path/to/videos"  # Replace with the actual directory path for videos
 channels_directory: "/path/to/channels"  # Replace with the actual directory path for channels
 channel_specific_delete_after: true or false
-processed_files_tracker: "processed_files.txt"  # The tracker file for processed videos
+processed_files_tracker: "processed_files.json"  # The tracker file for processed videos
 youtube_api_key: "YOUR_YOUTUBE_API_KEY_HERE"  # Replace with your actual YouTube API key
 apprise_url: "YOUR_APPRISE_URL_HERE"  # Replace with your actual Apprise notification URL
 channels_dvr_api_refresh_url: "http://[YOUR_CHANNELS_DVR_IP_HERE]/dvr/scanner/scan"  # Replace with your DVR API refresh URL
