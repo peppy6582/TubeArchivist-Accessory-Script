@@ -1,5 +1,3 @@
-Okay, here's an updated `README.md` that reflects the new features we've added, including per-channel `delete_after` settings, the total files deleted count in Apprise notifications, and the logic to avoid adding already existing channels to the config file again:
-
 ```markdown
 # TubeArchivist Accessory Script: YouTube Video Processor
 
