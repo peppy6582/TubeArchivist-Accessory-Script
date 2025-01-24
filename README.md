@@ -73,7 +73,8 @@ pip install -r requirements.txt
    ```yaml
    video_directory: "/path/to/TubeArchivist/YouTube/"
    channels_directory: "/path/to/TubeArchivist/YouTube Channels/"
-   processed_files_tracker: "processed_files.txt"
+   channel_specific_delete_after: true or false
+   processed_files_tracker: "processed_files.json"
    youtube_api_key: "your-youtube-api-key"
    apprise_url: "pover://your_user_key@your_api_token"
    channels_dvr_api_refresh_url: "http://YOUR_IP_ADDRESS:8089/dvr/scanner/scan"
@@ -83,13 +84,14 @@ pip install -r requirements.txt
    - **Required**:
      - `video_directory`: Directory where TubeArchivist stores downloaded videos.
      - `channels_directory`: Directory to organize videos by uploader.
+     - `channel_specific_delete_after`: Whether or not to use channel specific values for delete_after, set to true or false
      - `youtube_api_key`: YouTube Data API key.
      - `processed_files_tracker`: Keeps a record of processed files so API hits are not duplicated.
    - **Optional**:
      - `apprise_url`: URL for sending notifications via Apprise-supported services.
      - `channels_dvr_api_refresh_url`: URL for Channels DVR metadata refresh.
      - `delete_after`: Global value for removing files older than the specified number of days. Set to null to disable the delete function by default.
-     - `channels`: List of channels. This can either be a list of strings, or a list of dictionaries with the channel name as the key and the value set to  `delete_after`, and it will use that instead of the global value if specified.
+     - `channels`: Will be automatically populated if channel_specific_delete_after is set to true
 
 ---
 
