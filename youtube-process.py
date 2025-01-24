@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List, Union
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -31,6 +31,7 @@ class VideoProcessor:
     }
 
     def __init__(self, config_path: str):
+        self.config_path = config_path
         self.config = self._load_config(config_path)
         self.processed_files = self._load_processed_files()
         self.apprise_client = self._setup_apprise()
@@ -43,10 +44,50 @@ class VideoProcessor:
         """Load configuration from a YAML file."""
         try:
             with open(path, "r") as f:
-                return yaml.safe_load(f)
+                config = yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}")
             raise
+            
+        if config.get("channel_specific_delete_after", False):
+             if "channels" not in config:
+                config["channels"] = self._discover_channels(config.get("channels_directory"))
+                config["channels"] = {channel: {"delete_after": None} for channel in config["channels"]}
+             else:
+                 discovered_channels = self._discover_channels(config.get("channels_directory"))
+                 existing_channels = config["channels"]
+
+                 if isinstance(existing_channels, list):
+                     config["channels"] = {channel: {"delete_after": None} for channel in existing_channels}
+                     existing_channels = config["channels"]
+                    
+
+                 if isinstance(existing_channels, dict):
+                     for channel in discovered_channels:
+                         if channel not in existing_channels:
+                               existing_channels[channel] = {"delete_after": None}
+
+                         elif isinstance(existing_channels[channel], dict) and "delete_after" not in existing_channels[channel]:
+                             existing_channels[channel]["delete_after"] = None
+                     
+                 config["channels"] = existing_channels
+        elif "channels" in config:
+            del config["channels"]
+
+
+        return config
+
+    def _discover_channels(self, channels_dir_path: Optional[str]) -> List[str]:
+        """Discover channel directories in the specified directory."""
+        if not channels_dir_path:
+            return []
+
+        channels_dir = Path(channels_dir_path)
+        if not channels_dir.is_dir():
+            logger.warning(f"Channels directory does not exist: {channels_dir}")
+            return []
+        
+        return [d.name for d in channels_dir.iterdir() if d.is_dir()]
 
     def _load_processed_files(self) -> Set[str]:
         tracker_path = Path(self.config["processed_files_tracker"])
@@ -102,7 +143,8 @@ class VideoProcessor:
         """Get or create the destination directory and file info for a video."""
         if video_id not in self.video_id_map:
             if metadata := self.get_video_metadata(video_id):
-                channel_dir = Path(self.config["channels_directory"]) / self._sanitize_filename(metadata.uploader)
+                channel_name = self._map_uploader_to_channel(metadata.uploader)
+                channel_dir = Path(self.config["channels_directory"]) / channel_name
                 channel_dir.mkdir(parents=True, exist_ok=True)
                 base_filename = self._sanitize_filename(metadata.title)
 
@@ -111,11 +153,20 @@ class VideoProcessor:
                     "channel_dir": channel_dir,
                     "base_filename": base_filename,
                 }
-                self.processed_channels[metadata.uploader].append(metadata.title)
+                self.processed_channels[channel_name].append(metadata.title)
             else:
                 return None
 
         return self.video_id_map[video_id]
+    
+    def _map_uploader_to_channel(self, uploader: str) -> str:
+        """Map the uploader name to a configured channel, or default to 'Other'."""
+        if "channels" in self.config:
+            for channel in self.config["channels"]:
+                channel_name = channel if isinstance(channel, str) else channel if isinstance(channel, dict) else list(channel.keys())[0]
+                if self._sanitize_filename(uploader) == self._sanitize_filename(channel_name):
+                    return channel_name
+        return "Other"
 
     @staticmethod
     def _sanitize_filename(name: str) -> str:
@@ -176,32 +227,53 @@ class VideoProcessor:
             logger.info(f"Converted {json_path} to {nfo_path}")
         except Exception as e:
             logger.error(f"Failed to convert {json_path} to NFO: {e}")
+    
+    def _get_channel_delete_after(self, channel_name: str) -> Optional[int]:
+        """Get the delete_after value for a channel, or the global value if none is set."""
+        if self.config.get("channel_specific_delete_after", False):
+            if "channels" in self.config:
+                for channel, config_values in self.config["channels"].items():
+                     if self._sanitize_filename(channel) == self._sanitize_filename(channel_name):
+                           if isinstance(config_values, dict) and "delete_after" in config_values:
+                                if config_values["delete_after"] is not None:
+                                    return int(config_values["delete_after"])
+                                else:
+                                    return None
+        if "delete_after" in self.config:
+            if self.config["delete_after"] is not None:
+                return int(self.config["delete_after"])
+        return None
 
     def cleanup_old_files(self) -> None:
         """Delete files older than DELETE_AFTER days if configured."""
-        delete_after = self.config.get("delete_after")
-
-        if not delete_after:
-            logger.info("No DELETE_AFTER set, not deleting files.")
-            return
-
-        try:
-            days = int(delete_after)
-        except ValueError:
-            logger.error(f"Invalid DELETE_AFTER value: {delete_after}")
-            return
-
         channels_dir = Path(self.config["channels_directory"])
         if not channels_dir.exists():
             return
 
-        cutoff_time = time.time() - (days * 86400)
-        for file_path in channels_dir.rglob("*"):
-            try:
-                if file_path.is_file() and file_path.stat().st_mtime < cutoff_time:
-                    file_path.unlink()
-            except Exception as e:
-                logger.error(f"Failed to delete {file_path}: {e}")
+        for channel in channels_dir.iterdir():
+            if channel.is_dir():
+                delete_after = self._get_channel_delete_after(channel.name)
+
+                if not delete_after:
+                    logger.info(f"No DELETE_AFTER set for {channel.name}, not deleting files.")
+                    continue
+                
+                cutoff_time = time.time() - (delete_after * 86400)
+                deleted_count = 0
+                deleted_files_list = []
+                
+                for file_path in channel.rglob("*"):
+                    try:
+                        if file_path.is_file() and file_path.stat().st_mtime < cutoff_time:
+                            file_name = file_path.name
+                            file_path.unlink()
+                            deleted_files_list.append(file_name)
+                            deleted_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to delete {file_path}: {e}")
+                if deleted_count > 0:
+                    self.deleted_files[channel.name] = deleted_files_list
+                    self.deleted_files[channel.name].append(f"Total files deleted: {deleted_count}")
 
     def _send_notification(self) -> None:
         """Send notifications for processed and deleted files using Apprise."""
@@ -219,14 +291,15 @@ class VideoProcessor:
                 message_parts.append(f"Total videos processed: {sum(len(v) for v in self.processed_channels.values())}")
             
             if self.deleted_files:
-                if message_parts:  # Add blank line if processed files exist
-                    message_parts.append("")
-                message_parts.append("Deleted Files:")
-                summary = [f"{channel}: {len(files)} files" for channel, files in self.deleted_files.items()]
-                details = [f"  - {file}" for files in self.deleted_files.values() for file in files]
-                message_parts.extend(summary + details)
-                message_parts.append(f"Total files deleted: {sum(len(v) for v in self.deleted_files.values())}")
-            
+               if any(len(v) > 0 for v in self.deleted_files.values()):
+                    if message_parts:  # Add blank line if processed files exist
+                        message_parts.append("")
+                    message_parts.append("Deleted Files:")
+                    summary = [f"{channel}: {len(files)} files" for channel, files in self.deleted_files.items()]
+                    details = [f"  - {file}" for files in self.deleted_files.values() for file in files]
+                    message_parts.extend(summary + details)
+                    message_parts.append(f"Total files deleted: {sum(len(v) for v in self.deleted_files.values()) - sum(1 for v in self.deleted_files.values() if isinstance(v[-1], str) and 'Total files deleted:' in v[-1])}")
+
             if message_parts:
                 self.apprise_client.notify(
                     title="YouTube Video Processing Report",
@@ -254,6 +327,10 @@ class VideoProcessor:
 
             with ThreadPoolExecutor(max_workers=4) as executor:
                 list(executor.map(self._process_file, files))
+            
+            # Persist the changes to the config if needed
+            with open(self.config_path, "w") as f:
+                yaml.dump(self.config, f)
 
             self.cleanup_old_files()
 
